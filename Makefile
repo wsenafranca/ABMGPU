@@ -29,8 +29,8 @@ preys_cpu:
 	@g++ $(PREDATOR_PREY_CPU) -o $(BIN)/$@
 	
 boids_gpu: 
-	@nvcc -I $(SRC_DIR) $(PREDATOR_PREY_GPU) -o $(BIN)/$@
+	@nvcc -I $(SRC_DIR) $(FLOCKER_GPU) -o $(BIN)/$@
 	
 boids_cpu: 
-	@g++ $(PREDATOR_PREY_CPU) -o $(BIN)/$@
+	@g++ $(FLOCKER_CPU) -o $(BIN)/$@
 

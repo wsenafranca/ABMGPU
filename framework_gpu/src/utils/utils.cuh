@@ -3,7 +3,7 @@
 
 #include <cstdio>
 
-#define THREADS 128
+uint THREADS = 128;
 #define BLOCKS(x) max(1, (uint)ceil(x/(float)THREADS))
 
 #define CHECK_ERROR \
