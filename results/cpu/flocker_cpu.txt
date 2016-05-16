@@ -1,0 +1,35 @@
+Test 1: PopSize: 320000 (0.048828)
+elapsed time 2346.650000 secs
+elapsed time 2272.850000 secs
+elapsed time 2176.300000 secs
+elapsed time 2178.120000 secs
+elapsed time 2179.530000 secs
+
+Test 2: PopSize: 640000 (0.097656)
+elapsed time 7048.020000 secs
+elapsed time 7166.910000 secs
+elapsed time 7125.690000 secs
+elapsed time 7252.720000 secs
+elapsed time 7150.160000 secs
+
+Test 3: PopSize: 1280000 (0.195312)
+elapsed time 17587.150000 secs
+elapsed time 17774.970000 secs
+elapsed time 16640.310000 secs
+elapsed time 16634.320000 secs
+elapsed time 17066.710000 secs
+
+Test 4: PopSize: 1600000 (0.244141)
+elapsed time 22960.750000 secs
+elapsed time 22853.390000 secs
+elapsed time 22857.450000 secs
+elapsed time 22855.560000 secs
+elapsed time 22854.310000 secs
+
+Test 5: PopSize: 2560000 (0.390625)
+elapsed time 56692.290000 secs
+elapsed time 54327.710000 secs
+elapsed time 51953.820000 secs
+elapsed time 53010.450000 secs
+elapsed time 51617.360000 secs
+
