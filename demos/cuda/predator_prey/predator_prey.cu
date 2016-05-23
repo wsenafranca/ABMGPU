@@ -1,4 +1,4 @@
-#include"framework_gpu/simgpu.cuh"
+#include<simgpu.cuh>
 
 #include <cstdio>
 #include <cstdlib>
@@ -34,7 +34,7 @@ public:
     }
     
     __device__ void init() {
-    	type = (id < POP_SIZE*0.25f) ? PREDATOR : PREY;
+        type = (id < POP_SIZE*0.25f) ? PREDATOR : PREY;
     }
         
     __device__ void targetOn(Entity *other) {
@@ -50,8 +50,8 @@ public:
     }
     
     __device__ void clone(Agent *p) {
-    	Entity *parent = (Entity*)p;
-    	type = parent->type;
+        Entity *parent = (Entity*)p;
+        type = parent->type;
     }
     
     __device__ void eat() {
@@ -67,7 +67,7 @@ public:
             numTargets = 0;
         }
         else {
-        	Soil *cell = (Soil*)this->cell;
+            Soil *cell = (Soil*)this->cell;
             if(cell->target==this && cell->cover == PASTURE) {
                 cell->cover = SOIL;
                 nextEnergy += 5;
@@ -83,7 +83,7 @@ public:
 };
 
 __device__ void regrowth(Cell *cell) {
-	Soil *soil = (Soil*)cell;
+    Soil *soil = (Soil*)cell;
     if(soil->cover == SOIL) {
         soil->count++;
         if(soil->count >= GROWTH){
@@ -95,9 +95,10 @@ __device__ void regrowth(Cell *cell) {
 }
 
 __constant__ int neighs[][2] = {{0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}, {0, 1}, {0, -1}};
+
 __device__ void commonActions(Agent *agent, Cell *cs, uint xdim, uint ydim) {
-	Entity *ag = (Entity*)agent;
-	Soil *cells = (Soil*)cs;
+    Entity *ag = (Entity*)agent;
+    Soil *cells = (Soil*)cs;
     ag->nextEnergy--;
     if(ag->energy <= 0) {
         ag->die();
@@ -123,50 +124,50 @@ __device__ void commonActions(Agent *agent, Cell *cs, uint xdim, uint ydim) {
     }
     
     if(ag->type == PREY)
-    	ag->targetOn();
+        ag->targetOn();
 }
 
 __device__ void eat(Agent *agent) {
-	Entity *ag = (Entity*)agent;
-	ag->eat();
+    Entity *ag = (Entity*)agent;
+    ag->eat();
 }
 
 __device__ void hunt(Agent *agent1, Agent *agent2) {
-	Entity *ag = (Entity*)agent1;
-	Entity *other = (Entity*)agent2;
-	if(ag->type == PREDATOR && (other->type == PREY || cuRandom(ag->id) < 0.1))
+    Entity *ag = (Entity*)agent1;
+    Entity *other = (Entity*)agent2;
+    if(ag->type == PREDATOR && (other->type == PREY || cuRandom(ag->id) < 0.1))
         ag->targetOn(other);
 }
 
 __device__ void reset(Agent *agent) {
-	Entity *ag = (Entity*)agent;
-	ag->energy = ag->nextEnergy;
+    Entity *ag = (Entity*)agent;
+    ag->energy = ag->nextEnergy;
 }
 
 template<class A>
 __global__ void count(A *agents, uint size, uint *numPredators, uint *numPreys) {
-	uint i = threadIdx.x + blockDim.x*blockIdx.x;
-	if(i < size && !agents[i].dead) {
-		if(agents[i].type == PREDATOR)
-			atomicAdd(numPredators, 1);
-		else
-			atomicAdd(numPreys, 1);
-	}	
+    uint i = threadIdx.x + blockDim.x*blockIdx.x;
+    if(i < size && !agents[i].dead) {
+        if(agents[i].type == PREDATOR)
+            atomicAdd(numPredators, 1);
+        else
+            atomicAdd(numPreys, 1);
+    }   
 }
 
 template<class A>
 void count(Society<A> *soc, uint *numPredators, uint *numPreys) {
-	uint *d_predators, *d_preys;
-	cudaMalloc(&d_predators, sizeof(uint));
-	cudaMalloc(&d_preys, sizeof(uint));
-	cudaMemset(d_predators, 0, sizeof(uint));
-	cudaMemset(d_preys, 0, sizeof(uint));
-	uint blocks = BLOCKS(soc->size);
-	count<<<blocks, THREADS>>>(soc->agents, soc->size, d_predators, d_preys);
-	cudaMemcpy(numPredators, d_predators, sizeof(uint), cudaMemcpyDeviceToHost);
-	cudaMemcpy(numPreys, d_preys, sizeof(uint), cudaMemcpyDeviceToHost);
-	cudaFree(d_predators);
-	cudaFree(d_preys);
+    uint *d_predators, *d_preys;
+    cudaMalloc(&d_predators, sizeof(uint));
+    cudaMalloc(&d_preys, sizeof(uint));
+    cudaMemset(d_predators, 0, sizeof(uint));
+    cudaMemset(d_preys, 0, sizeof(uint));
+    uint blocks = BLOCKS(soc->size);
+    count<<<blocks, THREADS>>>(soc->agents, soc->size, d_predators, d_preys);
+    cudaMemcpy(numPredators, d_predators, sizeof(uint), cudaMemcpyDeviceToHost);
+    cudaMemcpy(numPreys, d_preys, sizeof(uint), cudaMemcpyDeviceToHost);
+    cudaFree(d_predators);
+    cudaFree(d_preys);
 }
 
 int saveBMP(unsigned int *map, unsigned int width, unsigned int height, const char *filename) {
@@ -231,8 +232,8 @@ int saveBMP(unsigned int *map, unsigned int width, unsigned int height, const ch
 }
 
 void runModel(long seed) {
-	uint capacity = XDIM*YDIM;
-	Random obj(seed, capacity);
+    uint capacity = XDIM*YDIM;
+    Random obj(seed, capacity);
     
     Society<Entity> soc(POP_SIZE, capacity);
     CellularSpace<Soil> cs(XDIM, YDIM);    
@@ -245,17 +246,17 @@ void runModel(long seed) {
     
     //uint *cells = (uint*)malloc(sizeof(uint)*XDIM*YDIM);
     
-    uint numPredators, numPreys;
+    //uint numPredators, numPreys;
     for(int i = 1; i <= ITERATION; i++) {
-    	count(&soc, &numPredators, &numPreys);
-    	cudaDeviceSynchronize();
+        //count(&soc, &numPredators, &numPreys);
+        //cudaDeviceSynchronize();
         //printf("%d %d %d %d\n", i, numPredators+numPreys, numPredators, numPreys);
         synchronize(&soc, &cs, &nb);
         execute<reset>(&soc);
         execute<hunt>(&soc, &cs, &nb);
         execute<commonActions>(&soc, &cs);
         execute<eat>(&soc);
-        execute<regrowth>(&cs);
+        change<regrowth>(&cs);
         
         //if(i%20==0) {
         //    cudaMemcpy(cells, cs.quantities, sizeof(uint)*XDIM*YDIM, cudaMemcpyDeviceToHost);
@@ -269,7 +270,7 @@ void runModel(long seed) {
 }
 
 int main() {
-	cudaSetDevice(1);
+    cudaSetDevice(1);
     
     //size_t sizes[] = {128, 256, 512, 768, 960};
     
@@ -281,8 +282,8 @@ int main() {
         fprintf(f, "Test %d: Dim: %d (%lf)\n", i+1, XDIM, (double)(double)POP_SIZE/(double)(XDIM*YDIM));
         printf("Test %d: Dim: %d (%lf)\n", i+1, XDIM, (double)(double)POP_SIZE/(double)(XDIM*YDIM));
         for(int j = 0; j < 5; j++) {
-        	cudaDeviceReset();
-        	        	
+            cudaDeviceReset();
+                        
             t = clock();
             runModel(j*10);
             t = clock()-t;
@@ -292,7 +293,7 @@ int main() {
     }
 
     fclose(f);
-	return 0;
+    return 0;
     
 }
 

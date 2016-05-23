@@ -302,13 +302,12 @@ void runModel(long seed) {
 int main() {
     cudaSetDevice(1);
     
-    size_t threads[] = {8, 64, 256, 512, 1024};
+    size_t sizes[] = {320000, 640000, 1280000, 1600000, 2560000};
     
     long t;
     FILE *f = fopen("flockers_GPU.txt", "w");
     for(int i = 0; i < 5; i++) {
-        THREADS = threads[i];
-        POP_SIZE = 320000;
+        POP_SIZE = sizes[i];
         fprintf(f, "Test %d: PopSize: %d (%lf)\n", i+1, POP_SIZE, (double)(double)POP_SIZE/(double)(XDIM*YDIM));
         printf("Test %d: PopSize: %d (%lf)\n", i+1, POP_SIZE, (double)(double)POP_SIZE/(double)(XDIM*YDIM));
         for(int j = 0; j < 5; j++) {

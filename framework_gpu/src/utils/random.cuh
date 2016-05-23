@@ -2,7 +2,6 @@
 #define RANDOM_CUH
 
 #include <curand_kernel.h>
-#include "utils.cuh"
 
 __device__ curandState* globalState;
 
@@ -18,7 +17,7 @@ __device__ T cuRand(uint id, T minValue, T maxValue) {
     curandState localState = globalState[id];
     float rndval = curand_uniform( &localState );
     globalState[id] = localState;
-    rndval = fma(rndval, maxValue - minValue, minValue);
+    rndval = rndval * (maxValue - minValue) + minValue;
     return truncf(rndval);
 }
 

@@ -41,16 +41,16 @@ __global__ void executeKernel(A *agents, uint size, C *cells, uint *quantities, 
         A *ag = &agents[idx];
         if(ag->dead) return;
         
-        C *cell = ag->cell;
-        int x = cell->x;
-        int y = cell->y;
+        C *cell = (C*)ag->cell;
+        int x = cell->getX();
+        int y = cell->getX();
         for(int i = -n; i <= n; i++) {
             for(int j = -m; j <= m; j++) {
                 int nx = x+j;
                 int ny = y+i;
                 if(nx >= 0 && nx < (int)xdim && ny >= 0 && ny < (int)ydim){
                     uint newcid = ny*xdim + nx;
-                    searchNeighs<change>(ag, &(cells[newcid]), neighborhood, offset, cells, xdim, ydim);
+                    searchNeighs<change>(ag, &(cells[newcid]), neighborhood, offset, cells, quantities, xdim, ydim);
                 }
             }
         }
@@ -67,19 +67,19 @@ void execute(Society<A> *soc, CellularSpace<C> *cs, Neighborhood<A, C> *nb) {
     CHECK_ERROR;
 }
 
-template<SpatialChange change, class C>
-__global__ void executeKernel(C *cs, uint len) {
+template<SpatialChange schange, class C>
+__global__ void changeKernel(C *cs, uint len) {
     uint i = threadIdx.x+blockIdx.x*blockDim.x;
     if(i < len) {
         C *c = &cs[i];
-        change(c);
+        schange(c);
     }
 }
 
-template<SpatialChange change, class C>
-void execute(CellularSpace<C> *cs) {
+template<SpatialChange schange, class C>
+void change(CellularSpace<C> *cs) {
     uint blocks = BLOCKS(cs->xdim*cs->ydim);
-    executeKernel<change><<<blocks, THREADS>>>(cs->cells, cs->xdim*cs->ydim);
+    changeKernel<schange><<<blocks, THREADS>>>(cs->cells, cs->xdim*cs->ydim);
     CHECK_ERROR;
 }
 
