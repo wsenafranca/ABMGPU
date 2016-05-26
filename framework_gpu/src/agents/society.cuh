@@ -21,32 +21,46 @@ public:
     Society(uint size, uint capacity) {
         this->size = size;
         this->capacity = capacity;
-        cudaMalloc(&agents, sizeof(A)*capacity);
-        CHECK_ERROR
-        cudaMalloc(&numDeaths, sizeof(uint));
-        CHECK_ERROR
-        cudaMalloc(&numRebirths, sizeof(uint));
-        CHECK_ERROR
+        uint totalMem = 0;
+        totalMem += sizeof(A)*capacity;     // alloc agents
+        totalMem += sizeof(uint);           // alloc numDeaths
+        totalMem += sizeof(uint);           // alloc numRebirths
+        
+        agentsIndex = 0;
+        numDeathsIndex = sizeof(A)*capacity;
+        numRebirthsIndex = sizeof(A)*capacity+sizeof(uint);
+        printf("%u\n", totalMem);
+        index = Environment::getEnvironment()->alloc(totalMem);
     }
     
     ~Society() {
-        cudaFree(agents);
-        CHECK_ERROR
-        cudaFree(numDeaths);
-        CHECK_ERROR
-        cudaFree(numRebirths);
-        CHECK_ERROR
     }
     
-    void init() {
+    void init(cudaStream_t *stream) {
         uint blocks = BLOCKS(size);
-        initializeSocietyKernel<<<blocks, THREADS>>>(agents, size);
+        initializeSocietyKernel<A><<<blocks, THREADS, 0, *stream>>>(getAgentsDevice(), size);
         CHECK_ERROR
     }
     
-    A *agents;
+    A* getAgentsDevice() {
+        return (A*)(Environment::getEnvironment()->getGlobalMemory()+index+agentsIndex);
+    }
+    
+    uint* getNumDeathsDevice() {
+        return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+numDeathsIndex);
+    }
+    
+    uint* getNumRebirthsDevice() {
+        return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+numRebirthsIndex);
+    }
+    
     uint size, capacity;
-    uint *numDeaths, *numRebirths;
+    
+private:
+    uint index;
+    uint agentsIndex;
+    uint numDeathsIndex;
+    uint numRebirthsIndex;
 };
 
 #endif

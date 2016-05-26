@@ -15,8 +15,8 @@ void execute(Society<A> *soc, CellularSpace<C> *cs) {
 	if(soc->size == 0) return;
 	
     uint blocks = BLOCKS(soc->size);
-    executeKernel<change><<<blocks, THREADS>>>(soc->agents, soc->size, 
-                                                            cs->cells, cs->xdim, cs->ydim);
+    executeKernel<change, A><<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size,
+                                                  cs->getCellsDevice(), cs->xdim, cs->ydim);
     CHECK_ERROR;
 }
 
@@ -37,7 +37,7 @@ template<SpaceSocialChangePair change, class A, class C>
 __global__ void executeKernel(A *agents, uint size, C *cells, uint *quantities, uint xdim, uint ydim, 
                                          A **neighborhood, uint *offset, int n, int m) {
     uint idx = threadIdx.x + blockDim.x*blockIdx.x;
-    if(idx < size) {
+    if(idx < size) {        
         A *ag = &agents[idx];
         if(ag->dead) return;
         
@@ -62,8 +62,9 @@ void execute(Society<A> *soc, CellularSpace<C> *cs, Neighborhood<A, C> *nb) {
 	if(soc->size == 0) return;
 	
     uint blocks = BLOCKS(soc->size);
-    executeKernel<change><<<blocks, THREADS>>>(soc->agents, soc->size, cs->cells, cs->quantities, cs->xdim, cs->ydim, 
-                                                                    nb->neighborhood, nb->offset, nb->n, nb->m);
+    executeKernel<change, A><<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size, 
+                                               cs->getCellsDevice(), cs->getQuantitiesDevice(), cs->xdim, cs->ydim, 
+                                               nb->getNeighborhoodDevice(), nb->getOffsetDevice(), nb->n, nb->m);
     CHECK_ERROR;
 }
 
@@ -79,7 +80,7 @@ __global__ void changeKernel(C *cs, uint len) {
 template<SpatialChange schange, class C>
 void change(CellularSpace<C> *cs) {
     uint blocks = BLOCKS(cs->xdim*cs->ydim);
-    changeKernel<schange><<<blocks, THREADS>>>(cs->cells, cs->xdim*cs->ydim);
+    changeKernel<schange><<<blocks, THREADS>>>(cs->getCellsDevice(), cs->xdim*cs->ydim);
     CHECK_ERROR;
 }
 

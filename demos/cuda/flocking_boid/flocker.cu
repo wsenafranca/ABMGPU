@@ -1,7 +1,7 @@
 #include <simgpu.cuh>
 
 #define BOID_SIZE 2
-#define NEIGHBOR 10
+#define NEIGHBOR 1
 #define XDIM 2560
 #define YDIM 2560
 #define ITERATION 200
@@ -17,6 +17,16 @@ const double momentum = 1.0;
 const double jump = 0.7;
 
 // utils
+
+__device__ int get_bag_index(int x, int y, int width, int height)
+{
+	//x = width, y = height
+	if(x <0) x = width - 1;
+	if(y < 0) y = height -1;
+	if(x >=width) x = 0;
+	if(y >= height) y = 0;
+	return y*width+x;
+}
 
 __device__ double _stx(double x, double width) { 
     if (x >= 0) { 
@@ -266,7 +276,7 @@ int saveBMP(uint *map, unsigned int width, unsigned int height, const char *file
 }
 
 void runModel(long seed) {
-    Random obj(seed, POP_SIZE);
+    Random::randomObj = new Random(seed, POP_SIZE);
     
     Society<Boid> soc(POP_SIZE, POP_SIZE);
     CellularSpace<Cell> cs(XDIM, YDIM);    
@@ -274,8 +284,21 @@ void runModel(long seed) {
     
     //uint *cells = (uint*)malloc(sizeof(uint)*XDIM*YDIM);
     
-    soc.init();
-    cs.init();
+    Environment::getEnvironment()->init();
+    
+    cudaStream_t stream[2];
+    for(int i = 0; i < 2; i++) {
+        cudaStreamCreate(&stream[i]);
+        if(i == 0)
+            soc.init(&stream[i]);
+        else if(i==1)
+            cs.init(&stream[i]);                        
+    }
+    nb.init();
+    cudaDeviceSynchronize();    
+    for(int i = 0; i < 2; i++) {
+        cudaStreamDestroy(stream[i]);
+    }
     
     placement(&soc, &cs);
     execute<init>(&soc);
@@ -288,7 +311,7 @@ void runModel(long seed) {
         execute<collect>(&soc, &cs, &nb);
         execute<flocker>(&soc, &cs);
         //if(i%2==0) {
-        //    cudaMemcpy(cells, cs.quantities, sizeof(uint)*XDIM*YDIM, cudaMemcpyDeviceToHost);
+        //    cudaMemcpy(cells, cs.getQuantitiesDevice(), sizeof(uint)*XDIM*YDIM, cudaMemcpyDeviceToHost);
         //    static char filename[128];
         //    sprintf(filename, "img%d.bmp", i/2);
         //    saveBMP(cells, XDIM, YDIM, filename);
@@ -306,15 +329,15 @@ int main() {
     
     long t;
     FILE *f = fopen("flockers_GPU.txt", "w");
-    for(int i = 0; i < 5; i++) {
+    for(int i = 0; i < 1; i++) {
         POP_SIZE = sizes[i];
         fprintf(f, "Test %d: PopSize: %d (%lf)\n", i+1, POP_SIZE, (double)(double)POP_SIZE/(double)(XDIM*YDIM));
         printf("Test %d: PopSize: %d (%lf)\n", i+1, POP_SIZE, (double)(double)POP_SIZE/(double)(XDIM*YDIM));
-        for(int j = 0; j < 5; j++) {
+        for(int j = 0; j < 1; j++) {
         	cudaDeviceReset();
         	
             t = clock();
-            runModel(j*10);
+            runModel(1234+j*10);
             t = clock()-t;
             printf("elapsed time %lf secs\n", t/(double) CLOCKS_PER_SEC);
             fprintf(f, "elapsed time %lf secs\n", t/(double) CLOCKS_PER_SEC);

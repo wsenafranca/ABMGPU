@@ -1,11 +1,12 @@
 #ifndef SYNCHRONIZEAGENTS_CUH
 #define SYNCHRONIZEAGENTS_CUH
 
-template<class A, class C>
-__global__ void countAgentsKernel(A *agents, uint quantity, C *cs, uint *quantities, uint *numDeaths, uint *numRebirths) {
+template<class A>
+__global__ void countAgentsKernel(A *agents, uint quantity, uint *quantities, uint *numDeaths, uint *numRebirths) {
     uint idx = threadIdx.x+blockIdx.x*blockDim.x;
     if(idx < quantity) {
         A *ag = &agents[idx];
+        
         if(ag->toDie) {
             ag->dead = true;
             ag->toDie = false;
@@ -25,7 +26,7 @@ template<class A>
 __global__ void findSlots(A *agents, uint quantity, uint *slots, uint slotSize, uint *parents, uint parentSize, uint *positions) {
     uint idx = threadIdx.x+blockIdx.x*blockDim.x;
     if(idx < quantity) {
-        A *ag = &(agents[idx]);
+        A *ag = &agents[idx];
         if(ag->dead) {
             uint p = atomicAdd(&(positions[0]), 1);
             if(p < slotSize)
@@ -43,29 +44,26 @@ __global__ void findSlots(A *agents, uint quantity, uint *slots, uint slotSize, 
     }
 }
 
-template<class A, class C>
-__global__ void rebirthAgentsKernel(A *agents, uint quantity, uint *slots, uint slotSize, 
-                                            uint *parents, uint numRebirths,
-                                            C *cs, uint xdim, uint ydim) {
+template<class A>
+__global__ void rebirthAgentsKernel(A *agents, uint quantity, uint *slots, uint slotSize, uint *parents, uint numRebirths) {
     uint idx = threadIdx.x+blockIdx.x*blockDim.x;
-    if(idx < numRebirths) {
+    if(idx < numRebirths) {        
         A *parent = &agents[parents[idx]];
         uint id = idx < slotSize ? slots[idx] : quantity+idx-slotSize;
         
-        uint cid = cuRand(id, xdim*ydim)%(xdim*ydim);
         A ag;
         ag.id = id;
         ag.init();
         ag.move(parent->cell);
         ag.clone(parent);
-        agents[id] = ag; 
+        agents[id] = ag;
     }
 }
 
 template<class A>
-__global__ void syncMoveKernel(A *agents, uint size, uint *quantities) {
+__global__ void syncMoveKernel(A *agents, uint quantity, uint *quantities) {
     uint i = threadIdx.x + blockDim.x*blockIdx.x;
-    if(i < size) {
+    if(i < quantity) {
         A *ag = &agents[i];
         if(!ag->dead && ag->nextCell && ag->nextCell != ag->cell) {
             Cell *newCell = ag->nextCell;
@@ -86,15 +84,15 @@ void syncAgents(Society<A> *soc, CellularSpace<C> *cs) {
     uint capacity = soc->capacity;
     uint quantity = soc->size;
     
-    cudaMemset(soc->numRebirths, 0, sizeof(uint));
-    cudaMemset(soc->numDeaths, 0, sizeof(uint));
+    cudaMemset(soc->getNumDeathsDevice(), 0, sizeof(uint)*2);
+    CHECK_ERROR;
     
-    countAgentsKernel<<<blocks, THREADS>>>(soc->agents, soc->size, cs->cells, cs->quantities, 
-                                                                    soc->numDeaths, soc->numRebirths);
+    countAgentsKernel<<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size, cs->getQuantitiesDevice(), 
+                                                                soc->getNumDeathsDevice(), soc->getNumRebirthsDevice());
     CHECK_ERROR;
     uint numDeaths, numRebirths;
-    cudaMemcpy(&numRebirths, soc->numRebirths, sizeof(uint), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&numDeaths, soc->numDeaths, sizeof(uint), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&numRebirths, soc->getNumRebirthsDevice(), sizeof(uint), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&numDeaths, soc->getNumDeathsDevice(), sizeof(uint), cudaMemcpyDeviceToHost);
     
     uint slotSize = min(numDeaths, numRebirths);
     numRebirths = (quantity+numRebirths-slotSize >= capacity) ? capacity+slotSize-quantity : numRebirths;
@@ -106,12 +104,13 @@ void syncAgents(Society<A> *soc, CellularSpace<C> *cs) {
         cudaMemset(d_positions, 0, sizeof(uint)*2);
         
         if(slotSize > 0) cudaMalloc(&d_slots, sizeof(uint)*slotSize);
-        findSlots<<<blocks, THREADS>>>(soc->agents, quantity, d_slots, slotSize, d_parents, numRebirths, d_positions);
+        findSlots<<<blocks, THREADS>>>(soc->getAgentsDevice(), quantity,
+                                       d_slots, slotSize, 
+                                       d_parents, numRebirths, d_positions);
         CHECK_ERROR;
         
         uint rblocks = BLOCKS(numRebirths);
-        rebirthAgentsKernel<<<rblocks, THREADS>>>(soc->agents, quantity, d_slots, slotSize, d_parents, numRebirths, 
-                                                                       					cs->cells, cs->xdim, cs->ydim);
+        rebirthAgentsKernel<<<rblocks, THREADS>>>(soc->getAgentsDevice(), quantity, d_slots, slotSize, d_parents, numRebirths);
         CHECK_ERROR;
         
         cudaFree(d_parents);
@@ -122,7 +121,7 @@ void syncAgents(Society<A> *soc, CellularSpace<C> *cs) {
     }
     
     blocks = BLOCKS(soc->size);
-    syncMoveKernel<<<blocks, THREADS>>>(soc->agents, soc->size, cs->quantities);
+    syncMoveKernel<<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size, cs->getQuantitiesDevice());
     CHECK_ERROR
 }
 

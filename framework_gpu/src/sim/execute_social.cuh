@@ -16,7 +16,7 @@ void execute(Society<A> *soc) {
 	
     uint blocks = BLOCKS(soc->size);
 
-    executeKernel<change><<<blocks, THREADS>>>(soc->agents, soc->size);
+    executeKernel<change, A><<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size);
     CHECK_ERROR;
 }
 
@@ -35,7 +35,7 @@ template<SocialChangePair change, class A, class C>
 __global__ void executeKernel2(A *agents, uint size, C *cells, uint *quantities, uint xdim, uint ydim, 
                                          A **neighborhood, uint *offset, int n, int m) {
     uint idx = threadIdx.x + blockDim.x*blockIdx.x;
-    if(idx < size) {
+    if(idx < size) {        
         A *ag = &agents[idx];
         if(ag->dead) return;
         
@@ -60,9 +60,10 @@ void execute(Society<A> *soc, CellularSpace<C> *cs, Neighborhood<A, C> *nb) {
 	if(soc->size == 0) return;
 	
     uint blocks = BLOCKS(soc->size);
-
-    executeKernel2<change><<<blocks, THREADS>>>(soc->agents, soc->size, cs->cells, cs->quantities, cs->xdim, cs->ydim, 
-                                                                    nb->neighborhood, nb->offset, nb->n, nb->m);
+    
+    executeKernel2<change, A><<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size, 
+                                                   cs->getCellsDevice(), cs->getQuantitiesDevice(), cs->xdim, cs->ydim, 
+                                                   nb->getNeighborhoodDevice(), nb->getOffsetDevice(), nb->n, nb->m);
     CHECK_ERROR;
 }
 

@@ -10,14 +10,16 @@ __global__ void placementKernel(A *agents, uint size, C *cells, uint *quantities
         C *cell = &(cells[cid]);
         atomicAdd(&(quantities[cid]), 1);
         ag->cell = cell;
-        ag->nextCell = NULL;        
+        ag->nextCell = NULL;
     }
 }
 
 template<class A, class C>
 void placement(Society<A> *soc, CellularSpace<C> *cs) {
     uint blocks = BLOCKS(soc->size);
-    placementKernel<<<blocks, THREADS>>>(soc->agents, soc->size, cs->cells, cs->quantities, cs->xdim, cs->ydim);
+    
+    placementKernel<A><<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size, 
+                                         cs->getCellsDevice(), cs->getQuantitiesDevice(), cs->xdim, cs->ydim);
     CHECK_ERROR
 }
 

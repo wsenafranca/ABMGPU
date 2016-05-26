@@ -128,23 +128,25 @@ void syncSpace(Society<A> *soc, CellularSpace<C> *cs, Neighborhood<A,C> *nb) {
     uint blocks;
     blocks = BLOCKS(soc->size);
     
-    cudaMemset(nb->size, 0, sizeof(uint));
-    findInhabitedKernel<<<blocks, THREADS>>>(soc->agents, soc->size, nb->inhabited, nb->registred, nb->size);
+    cudaMemset(nb->getSizeDevice(), 0, sizeof(uint));
+    findInhabitedKernel<<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size, 
+                                                nb->getInhabitedDevice(), nb->getRegistredDevice(), nb->getSizeDevice());
     uint nbSize;
-    cudaMemcpy(&nbSize, nb->size, sizeof(uint), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&nbSize, nb->getSizeDevice(), sizeof(uint), cudaMemcpyDeviceToHost);
     
     CHECK_ERROR
     if(nbSize > 0) {
     	
-		scan(nb->inhabited, nb->offset, cs->quantities, nbSize);
+		scan(nb->getInhabitedDevice(), nb->getOffsetDevice(), cs->getQuantitiesDevice(), nbSize);
 		CHECK_ERROR
 
 		blocks = BLOCKS(soc->size);
-		sortAgentsKernel<<<blocks, THREADS>>>(soc->agents, soc->size, nb->neighborhood, nb->offset, nb->pos);
+		sortAgentsKernel<<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size, 
+		                                      nb->getNeighborhoodDevice(), nb->getOffsetDevice(), nb->getPosDevice());
 		CHECK_ERROR
 		
 		blocks = BLOCKS(nbSize);
-		clearInfoKernel<<<blocks, THREADS>>>(nb->inhabited, nb->registred, nb->pos, nbSize);
+		clearInfoKernel<<<blocks, THREADS>>>(nb->getInhabitedDevice(), nb->getRegistredDevice(), nb->getPosDevice(), nbSize);
 		CHECK_ERROR
     }
 }

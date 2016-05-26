@@ -7,46 +7,70 @@
 template<class A, class C>
 class Neighborhood {
 public:
-    Neighborhood(Society<A> *soc, CellularSpace<C> *cs, uint n, uint m) {
+    Neighborhood(Society<A> *soc, CellularSpace<C> *cs, uint n, uint m) : cellularSpace(cs), society(soc) {
         this->n = n;
         this->m = m;
-        cudaMalloc(&neighborhood, sizeof(A*)*soc->capacity);
-        CHECK_ERROR
-        cudaMalloc(&inhabited, sizeof(C*)*soc->capacity);
-        CHECK_ERROR
-        cudaMalloc(&size, sizeof(uint));
-        CHECK_ERROR
-        cudaMalloc(&offset, sizeof(uint)*cs->xdim*cs->ydim);
-        CHECK_ERROR;
-        cudaMalloc(&registred, sizeof(uint)*cs->xdim*cs->ydim);
-        CHECK_ERROR;
-        cudaMalloc(&pos, sizeof(uint)*cs->xdim*cs->ydim);
-        CHECK_ERROR;
         
-        cudaMemset(registred, 0, sizeof(uint)*cs->xdim*cs->ydim);
-        cudaMemset(pos, 0, sizeof(uint)*cs->xdim*cs->ydim);
+        uint globalMemory = 0;
+        globalMemory += sizeof(A*)*soc->capacity;           // alloc neighborhood
+        globalMemory += sizeof(C*)*soc->capacity;           // alloc inhabited
+        globalMemory += sizeof(uint);                       // alloc size
+        globalMemory += sizeof(uint)*cs->xdim*cs->ydim;     // offset
+        globalMemory += sizeof(uint)*cs->xdim*cs->ydim;     // registred
+        globalMemory += sizeof(uint)*cs->xdim*cs->ydim;     // pos
+        
+        neighborhoodIndex = 0;
+        inhabitedIndex = neighborhoodIndex + sizeof(A*)*soc->capacity;
+        sizeIndex = inhabitedIndex+sizeof(C*)*soc->capacity;
+        offsetIndex = sizeIndex + sizeof(uint);
+        registredIndex = offsetIndex + sizeof(uint)*cs->xdim*cs->ydim;
+        posIndex = registredIndex + sizeof(uint)*cs->xdim*cs->ydim;
+        
+        index = Environment::getEnvironment()->alloc(globalMemory);
     }
+    
     ~Neighborhood() {
-        cudaFree(neighborhood);
-        CHECK_ERROR
-        cudaFree(inhabited);
-        CHECK_ERROR
-        cudaFree(size);
-        CHECK_ERROR
-        cudaFree(offset);
-        CHECK_ERROR
-        cudaFree(registred);
-        CHECK_ERROR
-        cudaFree(pos);
-        CHECK_ERROR
     }
-    A **neighborhood;
-    C **inhabited;
-    uint *pos;
-    uint *size;
-    uint *offset;
-    uint *registred;
+    
+    A** getNeighborhoodDevice() {
+        return (A**)(Environment::getEnvironment()->getGlobalMemory()+index+neighborhoodIndex);
+    }
+    
+    C** getInhabitedDevice() {
+        return (C**)(Environment::getEnvironment()->getGlobalMemory()+index+inhabitedIndex);
+    }
+    
+    uint* getSizeDevice() {
+        return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+sizeIndex);
+    }
+    
+    uint* getOffsetDevice() {
+        return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+offsetIndex);
+    }
+    
+    uint* getRegistredDevice() {
+        return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+registredIndex);
+    }
+    
+    uint* getPosDevice() {
+        return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+posIndex);
+    }
+    
+    void init() {
+        cudaMemset(getRegistredDevice(), 0, sizeof(uint)*cellularSpace->xdim*cellularSpace->ydim);
+        cudaMemset(getPosDevice(), 0, sizeof(uint)*cellularSpace->xdim*cellularSpace->ydim);
+    }
+    
+    uint neighborhoodIndex;
+    uint inhabitedIndex;
+    uint sizeIndex;
+    uint offsetIndex;
+    uint registredIndex;
+    uint posIndex;
+    uint index;
     uint n, m;
+    CellularSpace<C> *cellularSpace;
+    Society<A> *society;
 };
 
 #endif

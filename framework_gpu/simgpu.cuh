@@ -5,6 +5,8 @@
 #include "src/utils/prefix_sum.cuh"
 #include "src/utils/random.cuh"
 
+#include "src/sim/environment.cuh"
+
 #include "src/space/cellularspace.cuh"
 
 #include "src/agents/society.cuh"
