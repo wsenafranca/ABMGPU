@@ -8,20 +8,21 @@ public:
     Environment() : size(0), d_mem(0) {}
     
     virtual ~Environment() {
-        cudaFree(d_mem);
-        CHECK_ERROR
+        reset();
     }
     
     bool init() {
         cudaError_t err = cudaMalloc(&d_mem, size);
+        printf("total memory: %lu\n", size);
         if(err != cudaSuccess) {
             fprintf(stderr, "%s\n", cudaGetErrorString(err));
+            exit(1);
             return false;
         }
         return true;
     }
     
-    uint alloc(uint bytes) {
+    uint alloc(size_t bytes) {
         uint index = size;
         size+=bytes;
         return index;
@@ -31,13 +32,20 @@ public:
         return d_mem;
     }
     
+    void reset() {
+        cudaFree(d_mem);
+        d_mem = 0;
+        size = 0;
+        CHECK_ERROR
+    }
+    
     static Environment* getEnvironment() {
         if(!environment) environment = new Environment();
         return environment;
     }
     
 private:
-    uint size;
+    size_t size;
     unsigned char *d_mem;
     static Environment* environment;
 };
@@ -45,3 +53,4 @@ private:
 Environment *Environment::environment = 0;
 
 #endif
+

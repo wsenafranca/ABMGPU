@@ -5,7 +5,7 @@
 
 class Agent{
 public:
-    __device__ Agent() : cell(0), dead(0), toDie(0), children(0) {}
+    __device__ Agent() : cell(0), dead(0), children(0){}
     
     __device__ virtual ~Agent(){}
     
@@ -14,21 +14,26 @@ public:
     __device__ virtual void clone(Agent *parent){}
     
     __device__ void move(Cell *cell) {
-		nextCell = cell;
+		this->cell = cell;
 	}
     
-    __device__ void die(){
-		toDie = true;
+    __device__ void die() {
+        dead = true;
 	}
+    
+    __device__ bool isDead() const{
+        return dead;
+    }
     
     __device__ void reproduce(uint children) {
-		this->children = children;
-	}
+        this->children = children;
+    }
     
-    uint id;
-    Cell *cell, *nextCell;
-    bool dead, toDie;
+    //uint id;
+    Cell *cell;
+    bool dead;
     uint children;
 };
 
 #endif
+

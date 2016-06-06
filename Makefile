@@ -15,32 +15,39 @@ FLOCKER_CPU = $(DEMOS_CPP_DIR)/flocking_boid/flocker.cpp
 
 #==============================================
 
-SRC_DIR = framework_gpu
+FRAMEWORK_DIR = framework_gpu
+
+SRC_DIR = $(FRAMEWORK_DIR)/src
+
+LIBRARIES = -lcurand
+
+COMPILER = --std=c++11
+
+INCLUDES = -I$(SRC_DIR) -I$(FRAMEWORK_DIR)
 
 all: mkbin preys_gpu boids_gpu preys_cpu boids_cpu
 
-debug: mkbin d_preys_gpu d_boids_gpu
+debug: mkbin debug_preys_gpu debug_boids_gpu
 
 mkbin:
 	@mkdir -p $(BIN)
 
 preys_gpu: 
-	@nvcc -I $(SRC_DIR) $(PREDATOR_PREY_GPU) -o $(BIN)/$@
+	@nvcc ${COMPILER} ${INCLUDES} ${LIBRARIES} $(PREDATOR_PREY_GPU) -o $(BIN)/$@
 
 preys_cpu:
 	@g++ $(PREDATOR_PREY_CPU) -o $(BIN)/$@
 	
 boids_gpu: 
-	@nvcc -I $(SRC_DIR) -lcurand $(FLOCKER_GPU) -o $(BIN)/$@
+	@nvcc ${COMPILER} ${INCLUDES} ${LIBRARIES} $(FLOCKER_GPU) -o $(BIN)/$@
 	
 boids_cpu: 
 	@g++ $(FLOCKER_CPU) -o $(BIN)/$@
 	
+debug_preys_gpu: 
+	@nvcc ${COMPILER} ${INCLUDES} ${LIBRARIES} $(PREDATOR_PREY_GPU) -o $(BIN)/preys_gpu -lineinfo -g
 	
-d_preys_gpu: 
-	@nvcc -I $(SRC_DIR) -lcurand $(PREDATOR_PREY_GPU) -o $(BIN)/preys_gpu -lineinfo -g
-	
-d_boids_gpu: 
-	@nvcc -I $(SRC_DIR) $(FLOCKER_GPU) -o $(BIN)/boids_gpu -lineinfo -g
+debug_boids_gpu: 
+	@nvcc ${COMPILER} ${INCLUDES} ${LIBRARIES} $(FLOCKER_GPU) -o $(BIN)/boids_gpu -lineinfo -g
 	
 

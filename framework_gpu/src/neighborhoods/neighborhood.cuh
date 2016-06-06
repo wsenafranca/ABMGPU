@@ -4,73 +4,101 @@
 #include "../space/cellularspace.cuh"
 #include "../agents/society.cuh"
 
+typedef texture<uint, cudaTextureType2D, cudaReadModeElementType> UIntTexture2D;
+
+UIntTexture2D beginsRef;
+UIntTexture2D endsRef;
+
 template<class A, class C>
 class Neighborhood {
 public:
-    Neighborhood(Society<A> *soc, CellularSpace<C> *cs, uint n, uint m) : cellularSpace(cs), society(soc) {
+    Neighborhood(Society<A> *soc, CellularSpace<C> *cs, uint n, uint m) {
         this->n = n;
         this->m = m;
-        
+        neighborhoodXDim = m > 0 ? truncf(cs->xdim/m)+1 : cs->xdim;
+        neighborhoodYDim = n > 0 ? truncf(cs->ydim/n)+1 : cs->ydim;
         uint globalMemory = 0;
-        globalMemory += sizeof(A*)*soc->capacity;           // alloc neighborhood
-        globalMemory += sizeof(C*)*soc->capacity;           // alloc inhabited
-        globalMemory += sizeof(uint);                       // alloc size
-        globalMemory += sizeof(uint)*cs->xdim*cs->ydim;     // offset
-        globalMemory += sizeof(uint)*cs->xdim*cs->ydim;     // registred
-        globalMemory += sizeof(uint)*cs->xdim*cs->ydim;     // pos
         
-        neighborhoodIndex = 0;
-        inhabitedIndex = neighborhoodIndex + sizeof(A*)*soc->capacity;
-        sizeIndex = inhabitedIndex+sizeof(C*)*soc->capacity;
-        offsetIndex = sizeIndex + sizeof(uint);
-        registredIndex = offsetIndex + sizeof(uint)*cs->xdim*cs->ydim;
-        posIndex = registredIndex + sizeof(uint)*cs->xdim*cs->ydim;
+        neighborhoodIndex = globalMemory;
+        globalMemory += sizeof(uint)*soc->capacity;                           // alloc neighborhood
+        
+        inhabitedIndex = globalMemory;
+        globalMemory += sizeof(uint)*soc->capacity;                         // alloc inhabited
+        
+        offsetIndex = globalMemory;
+        globalMemory += sizeof(uint)*neighborhoodXDim*neighborhoodYDim;     // offset
+        
+        posIndex = globalMemory;
+        globalMemory += sizeof(uint)*neighborhoodXDim*neighborhoodYDim;     // pos
+        
+        quantitiesIndex = globalMemory;
+        globalMemory += sizeof(uint)*neighborhoodXDim*neighborhoodYDim;     // quantities
         
         index = Environment::getEnvironment()->alloc(globalMemory);
+        
     }
     
     ~Neighborhood() {
+        cudaFreeArray(beginsArray);
+        cudaFreeArray(endsArray);
     }
     
-    A** getNeighborhoodDevice() {
-        return (A**)(Environment::getEnvironment()->getGlobalMemory()+index+neighborhoodIndex);
+    void init() {
+        cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<uint>();
+        cudaMallocArray(&beginsArray,&channelDesc,neighborhoodXDim,neighborhoodYDim,cudaArraySurfaceLoadStore);
+        cudaBindTextureToArray(beginsRef,beginsArray, channelDesc);
+        
+        channelDesc = cudaCreateChannelDesc<uint>();
+        cudaMallocArray(&endsArray,&channelDesc,neighborhoodXDim,neighborhoodYDim,cudaArraySurfaceLoadStore);
+        cudaBindTextureToArray(endsRef,endsArray, channelDesc);
     }
     
-    C** getInhabitedDevice() {
-        return (C**)(Environment::getEnvironment()->getGlobalMemory()+index+inhabitedIndex);
+    uint* getNeighborhoodDevice() {
+        return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+neighborhoodIndex);
     }
     
-    uint* getSizeDevice() {
-        return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+sizeIndex);
+    uint* getInhabitedDevice() {
+        return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+inhabitedIndex);
     }
     
     uint* getOffsetDevice() {
         return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+offsetIndex);
     }
     
-    uint* getRegistredDevice() {
-        return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+registredIndex);
-    }
-    
     uint* getPosDevice() {
         return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+posIndex);
     }
     
-    void init() {
-        cudaMemset(getRegistredDevice(), 0, sizeof(uint)*cellularSpace->xdim*cellularSpace->ydim);
-        cudaMemset(getPosDevice(), 0, sizeof(uint)*cellularSpace->xdim*cellularSpace->ydim);
+    uint* getQuantitiesDevice() {
+        return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+quantitiesIndex);
+    }
+    
+    void clear() {        
+        uint bytes = sizeof(uint)*neighborhoodXDim*neighborhoodYDim+
+                     sizeof(uint)*neighborhoodXDim*neighborhoodYDim+
+                     sizeof(uint)*neighborhoodXDim*neighborhoodYDim;
+        cudaMemset(getOffsetDevice(), 0, bytes);
+    }
+    
+    void syncTexture() {
+        cudaMemcpyToArray(beginsArray,0, 0, getOffsetDevice(), 
+                          sizeof(uint)*neighborhoodXDim*neighborhoodYDim,cudaMemcpyDeviceToDevice);
+        cudaMemcpyToArray(endsArray,0, 0, getQuantitiesDevice(), 
+                          sizeof(uint)*neighborhoodXDim*neighborhoodYDim,cudaMemcpyDeviceToDevice);
     }
     
     uint neighborhoodIndex;
     uint inhabitedIndex;
-    uint sizeIndex;
     uint offsetIndex;
-    uint registredIndex;
     uint posIndex;
+    uint quantitiesIndex;
     uint index;
     uint n, m;
-    CellularSpace<C> *cellularSpace;
-    Society<A> *society;
+    uint neighborhoodXDim;
+    uint neighborhoodYDim;
+    
+    cudaArray *beginsArray, *endsArray;
 };
 
 #endif
+

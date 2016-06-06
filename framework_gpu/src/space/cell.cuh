@@ -3,21 +3,23 @@
 
 class Cell {
 public:
-    __device__ Cell(){}
+    __device__ Cell() {}
     __device__ virtual ~Cell(){}
-    __device__ uint getQuantity() const {
-		return quantities[cid];
+    
+    __device__ const uint& getX() const {
+        return pos.x;
 	}
-    __device__ uint getX() const {
-		return cid%(*xdim);
+    __device__ const uint& getY() const {
+        return pos.y;
 	}
-    __device__ uint getY() const {
-		return cid/(*xdim);
-	}
-
+    
+    __device__ const uint2& getPos() const {
+        return pos;
+    }
+    
     uint cid;
-    uint *quantities;
-    uint *xdim, *ydim;
+    uint2 pos;
 };
 
 #endif
+

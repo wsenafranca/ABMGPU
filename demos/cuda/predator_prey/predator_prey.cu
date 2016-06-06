@@ -4,8 +4,8 @@
 #include <cstdlib>
 #include <ctime>
 
-#define XDIM 128
-#define YDIM 128
+#define XDIM 512
+#define YDIM 512
 
 #define POP_SIZE truncf(XDIM*YDIM*0.1f)
 #define ENERGY 40
@@ -30,11 +30,11 @@ public:
 
 class Entity : public Agent{
 public:
-    __device__ Entity() : numTargets(0), energy(ENERGY), nextEnergy(ENERGY), type(0) {
+    __device__ Entity() : numTargets(0), energy(ENERGY), type(0) {
     }
     
     __device__ void init() {
-        type = (id < POP_SIZE*0.25f) ? PREDATOR : PREY;
+        type = (ID < POP_SIZE*0.25f) ? PREDATOR : PREY;
     }
         
     __device__ void targetOn(Entity *other) {
@@ -59,7 +59,7 @@ public:
             for(int i = 0; i < numTargets; i++) {
                 Entity *prey = targets[i];
                 if(prey->predator == this) {
-                    nextEnergy += prey->energy/2;
+                    energy += prey->energy/2;
                     prey->die();
                     break;
                 }
@@ -70,7 +70,7 @@ public:
             Soil *cell = (Soil*)this->cell;
             if(cell->target==this && cell->cover == PASTURE) {
                 cell->cover = SOIL;
-                nextEnergy += 5;
+                energy += 5;
             }
         }
     }
@@ -78,7 +78,7 @@ public:
     Entity* targets[MAX_TARGETS];
     int numTargets;
     Entity* predator;
-    int energy, nextEnergy;
+    int energy;
     int type;
 };
 
@@ -99,7 +99,7 @@ __constant__ int neighs[][2] = {{0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, 
 __device__ void commonActions(Agent *agent, Cell *cs, uint xdim, uint ydim) {
     Entity *ag = (Entity*)agent;
     Soil *cells = (Soil*)cs;
-    ag->nextEnergy--;
+    ag->energy--;
     if(ag->energy <= 0) {
         ag->die();
         return;
@@ -107,7 +107,7 @@ __device__ void commonActions(Agent *agent, Cell *cs, uint xdim, uint ydim) {
     
     Soil *cell = (Soil*)ag->cell;
     
-    int pos = cuRand(ag->id, 8)%8;
+    int pos = cuRand(ID, 8)%8;
     int rx = neighs[pos][0];
     int ry = neighs[pos][1];
     
@@ -119,7 +119,7 @@ __device__ void commonActions(Agent *agent, Cell *cs, uint xdim, uint ydim) {
     }
     
     if((ag->type == PREY && ag->energy >= 50) || (ag->type == PREDATOR && ag->energy >= 50)) {
-        ag->nextEnergy /= 2;
+        ag->energy /= 2;
         ag->reproduce(1);
     }
     
@@ -135,13 +135,8 @@ __device__ void eat(Agent *agent) {
 __device__ void hunt(Agent *agent1, Agent *agent2) {
     Entity *ag = (Entity*)agent1;
     Entity *other = (Entity*)agent2;
-    if(ag->type == PREDATOR && (other->type == PREY || cuRandom(ag->id) < 0.1))
+    if(ag->type == PREDATOR && (other->type == PREY || cuRandom(ID) < 0.1))
         ag->targetOn(other);
-}
-
-__device__ void reset(Agent *agent) {
-    Entity *ag = (Entity*)agent;
-    ag->energy = ag->nextEnergy;
 }
 
 template<class A>
@@ -163,7 +158,7 @@ void count(Society<A> *soc, uint *numPredators, uint *numPreys) {
     cudaMemset(d_predators, 0, sizeof(uint));
     cudaMemset(d_preys, 0, sizeof(uint));
     uint blocks = BLOCKS(soc->size);
-    count<<<blocks, THREADS>>>(soc->agents, soc->size, d_predators, d_preys);
+    count<<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size, d_predators, d_preys);
     cudaMemcpy(numPredators, d_predators, sizeof(uint), cudaMemcpyDeviceToHost);
     cudaMemcpy(numPreys, d_preys, sizeof(uint), cudaMemcpyDeviceToHost);
     cudaFree(d_predators);
@@ -233,26 +228,28 @@ int saveBMP(unsigned int *map, unsigned int width, unsigned int height, const ch
 
 void runModel(long seed) {
     uint capacity = XDIM*YDIM;
-    Random obj(seed, capacity);
-    
+    Random::randomObj = new Random(seed, capacity);
     Society<Entity> soc(POP_SIZE, capacity);
     CellularSpace<Soil> cs(XDIM, YDIM);    
     Neighborhood<Entity, Soil> nb(&soc, &cs, 0, 0);
     
+    Environment::getEnvironment()->init();
+    
     soc.init();
     cs.init();
-    
+    nb.init();
     placement(&soc, &cs);
     
     //uint *cells = (uint*)malloc(sizeof(uint)*XDIM*YDIM);
     
     //uint numPredators, numPreys;
     for(int i = 1; i <= ITERATION; i++) {
+        //printf("%d\n", i);
         //count(&soc, &numPredators, &numPreys);
         //cudaDeviceSynchronize();
         //printf("%d %d %d %d\n", i, numPredators+numPreys, numPredators, numPreys);
+        
         synchronize(&soc, &cs, &nb);
-        execute<reset>(&soc);
         execute<hunt>(&soc, &cs, &nb);
         execute<commonActions>(&soc, &cs);
         execute<eat>(&soc);
@@ -267,6 +264,7 @@ void runModel(long seed) {
     }
     cudaDeviceSynchronize();
     //free(cells);
+    Environment::getEnvironment()->reset(); // temp
 }
 
 int main() {
@@ -281,7 +279,7 @@ int main() {
         //YDIM = sizes[i];
         fprintf(f, "Test %d: Dim: %d (%lf)\n", i+1, XDIM, (double)(double)POP_SIZE/(double)(XDIM*YDIM));
         printf("Test %d: Dim: %d (%lf)\n", i+1, XDIM, (double)(double)POP_SIZE/(double)(XDIM*YDIM));
-        for(int j = 0; j < 5; j++) {
+        for(int j = 0; j < 1; j++) {
             cudaDeviceReset();
                         
             t = clock();
@@ -293,6 +291,9 @@ int main() {
     }
 
     fclose(f);
+    
+    delete Environment::getEnvironment(); // temp
+    
     return 0;
     
 }

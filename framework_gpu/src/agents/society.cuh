@@ -5,11 +5,10 @@
 #include "agent.cuh"
 
 template<class A>
-__global__ void initializeSocietyKernel(A *agents, uint size) {
+__global__ void initializeSocietyKernel(A *agents, A *past, const uint size) {
     uint i = threadIdx.x + blockDim.x*blockIdx.x;
     if(i < size) {
         A ag;
-        ag.id = i;
         ag.init();
         agents[i] = ag;
     }
@@ -18,34 +17,52 @@ __global__ void initializeSocietyKernel(A *agents, uint size) {
 template<class A>
 class Society{
 public:
-    Society(uint size, uint capacity) {
-        this->size = size;
-        this->capacity = capacity;
+    Society(uint Size, uint Capacity) : size(Size), capacity(Capacity) {
         uint totalMem = 0;
+        agentsIndex = totalMem;
         totalMem += sizeof(A)*capacity;     // alloc agents
-        totalMem += sizeof(uint);           // alloc numDeaths
-        totalMem += sizeof(uint);           // alloc numRebirths
         
-        agentsIndex = 0;
-        numDeathsIndex = sizeof(A)*capacity;
-        numRebirthsIndex = sizeof(A)*capacity+sizeof(uint);
-        printf("%u\n", totalMem);
+        pastIndex = totalMem;
+        totalMem += sizeof(A)*capacity;     // alloc past
+        
+        //indicesIndex = totalMem;
+        //totalMem += sizeof(uint)*capacity;
+        
+        numDeathsIndex = totalMem;
+        totalMem += sizeof(uint);          // alloc numDeaths
+        
+        numRebirthsIndex = totalMem;
+        totalMem += sizeof(uint);          // alloc numRebirths
+        
         index = Environment::getEnvironment()->alloc(totalMem);
     }
     
     ~Society() {
     }
     
-    void init(cudaStream_t *stream) {
+    void init() {
         uint blocks = BLOCKS(size);
-        initializeSocietyKernel<A><<<blocks, THREADS, 0, *stream>>>(getAgentsDevice(), size);
+        initializeSocietyKernel<<<blocks, THREADS>>>(getAgentsDevice(), getPastDevice(), size);
+        cudaMemcpy(getPastDevice(), getAgentsDevice(), sizeof(A)*size, cudaMemcpyDeviceToDevice);
         CHECK_ERROR
+    }
+    
+    void synchronize() {
+        cudaMemcpy(getPastDevice(), getAgentsDevice(), sizeof(A)*size, cudaMemcpyDeviceToDevice);
     }
     
     A* getAgentsDevice() {
         return (A*)(Environment::getEnvironment()->getGlobalMemory()+index+agentsIndex);
     }
     
+    A* getPastDevice() {
+        return (A*)(Environment::getEnvironment()->getGlobalMemory()+index+pastIndex);
+    }
+    
+    //uint* getIndicesDevice() {
+    //    return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+indicesIndex);
+    //}
+     
     uint* getNumDeathsDevice() {
         return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+numDeathsIndex);
     }
@@ -54,13 +71,17 @@ public:
         return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+numRebirthsIndex);
     }
     
-    uint size, capacity;
+    uint size;
+    const uint capacity;
     
 private:
     uint index;
     uint agentsIndex;
+    uint pastIndex;
+    uint indicesIndex;
     uint numDeathsIndex;
     uint numRebirthsIndex;
 };
 
 #endif
+

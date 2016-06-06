@@ -2,15 +2,12 @@
 #define PLACEMENTS
 
 template<class A, class C>
-__global__ void placementKernel(A *agents, uint size, C *cells, uint *quantities, uint xdim, uint ydim) {
-    uint i = threadIdx.x + blockDim.x*blockIdx.x;
+__global__ void placementKernel(A *agents, const uint size, C *cells, const uint xdim, const uint ydim) {
+    const uint i = threadIdx.x + blockDim.x*blockIdx.x;
     if(i < size) {
         uint cid = cuRand(i, ydim*xdim) % (ydim*xdim);
         A *ag = &agents[i];
-        C *cell = &(cells[cid]);
-        atomicAdd(&(quantities[cid]), 1);
-        ag->cell = cell;
-        ag->nextCell = NULL;
+        ag->move(&cells[cid]);
     }
 }
 
@@ -19,8 +16,9 @@ void placement(Society<A> *soc, CellularSpace<C> *cs) {
     uint blocks = BLOCKS(soc->size);
     
     placementKernel<A><<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size, 
-                                         cs->getCellsDevice(), cs->getQuantitiesDevice(), cs->xdim, cs->ydim);
+                                            cs->getCellsDevice(), cs->xdim, cs->ydim);
     CHECK_ERROR
 }
 
 #endif
+

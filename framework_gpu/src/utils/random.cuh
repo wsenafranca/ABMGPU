@@ -41,6 +41,7 @@ public:
     }
     ~Random() {
         cudaFree(d_random);
+        curandDestroyGenerator(gen);
     }
     curandGenerator_t gen;
     float *d_random;

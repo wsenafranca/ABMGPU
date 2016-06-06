@@ -1,155 +1,77 @@
 #ifndef SYNCHRONIZESPACE_CUH
 #define SYNCHRONIZESPACE_CUH
 
-template<class A, class C>
-__global__ void findInhabitedKernel(A *agents, uint size, C **inhabited, uint *registred, uint *pos) {
+#include <thrust/unique.h>
+#include <thrust/execution_policy.h>
+#include <thrust/sort.h>
+#include <thrust/remove.h>
+
+template<class A>
+__global__ void findInhabitedKernel(A *agents, uint size, uint *inhabited, uint n, uint m, uint neighXDim) {
     uint i = threadIdx.x + blockDim.x*blockIdx.x;
     if(i < size) {
         A *ag = &agents[i];
-        if(ag->dead) return;
         
-        C *cell = (C*)ag->cell;
-        if(atomicCAS(&registred[cell->cid], 0, 1)==0) {
-            uint p = atomicAdd(pos, 1);
-            inhabited[p] = cell;
-        }
-    }
-}
+        Cell *cell = ag->cell;
+        int x = m > 0 ? truncf(cell->getX()/m) : cell->getX();
+        int y = n > 0 ? truncf(cell->getY()/n) : cell->getY();
+        uint ncid = y*neighXDim + x;
 
-template<class C>
-__global__ void calcOffsetKernel(C **cells, uint *offset, uint *quantities, uint len) {
-    uint i = threadIdx.x + blockDim.x*blockIdx.x;
-    if(i < len) {
-        uint p = 0;
-        for(uint j = 0; j < i; j++) {
-        	p+=quantities[cells[j]->cid];
-        }
-        offset[cells[i]->cid] = p;
+        inhabited[i] = ncid;
     }
-}
-
-template<class C>
-__global__ void prescan(C **cells, uint *offsets, uint *quantities, uint *buffer, uint len) {
-	extern __shared__ uint s_data[];
-	uint tid = threadIdx.x;
-    uint i = threadIdx.x+blockDim.x*blockIdx.x;
-    uint offset = 1;
-    s_data[tid] = (i < len) ? quantities[cells[i]->cid] : 0;
-    for(uint d = blockDim.x>>1; d > 0; d>>=1) {
-        __syncthreads();
-        if(tid < d) {
-            uint ai = offset*(2*tid+1)-1;
-            uint bi = offset*(2*tid+2)-1;
-            s_data[bi]+=s_data[ai];
-        }
-        offset*=2;
-    }
-    
-    if(tid == 0) {
-        if(buffer) buffer[blockIdx.x] = s_data[blockDim.x-1];
-        s_data[blockDim.x-1] = 0; 
-    }
-    
-    for(uint d = 1; d < blockDim.x; d*=2) {
-        offset>>=1;
-        __syncthreads();
-        if(tid < d) {
-            uint ai = offset*(2*tid+1)-1;
-            uint bi = offset*(2*tid+2)-1;
-            uint t = s_data[ai];
-            s_data[ai]=s_data[bi];
-            s_data[bi]+=t;
-        }
-    }
-    __syncthreads();
-    if(i < len)
-    	offsets[cells[i]->cid] = s_data[tid];
-}
-
-template<class C>
-__global__ void postscan(C **cells, uint *buffer, uint *offset, uint len) {
-	__shared__ uint buf;
-    uint i = threadIdx.x + blockDim.x*blockIdx.x;
-    if(i < len) 
-        buf = buffer[blockIdx.x];
-        
-    __syncthreads();
-    
-    if(i < len) 
-        offset[cells[i]->cid]+=buf;
-}
-
-template<class C>
-void scan(C **cells, uint *offsets, uint *quantities, uint len) {
-	uint size = next2k(len);
-    uint blocks = BLOCKS(size);
-    
-	uint *d_buffer;
-    cudaMalloc(&d_buffer, sizeof(uint)*blocks);
-    
-    uint threads = min(THREADS, size);
-    prescan<<<blocks, threads, sizeof(uint)*(size/blocks)>>>(cells, offsets, quantities, d_buffer, len);
-    CHECK_ERROR
-    recursiveScan(d_buffer, d_buffer, blocks);
-    CHECK_ERROR
-    postscan<<<blocks, threads, sizeof(uint)>>>(cells, d_buffer, offsets, len);
-    CHECK_ERROR
-    
-    cudaFree(d_buffer);
 }
 
 template<class A>
-__global__ void sortAgentsKernel(A *agents, uint size, A **neighborhood, uint *offset, uint *pos) {
+__global__ void sortAgentsKernel(A *agents, uint size, uint *neighborhood, uint *pos, uint n, uint m, uint neighborhoodXDim) {
     uint i = threadIdx.x + blockDim.x*blockIdx.x;
     if(i < size) {
         A *ag = &agents[i];
-        if(!ag->dead) {
-            Cell *cell = ag->cell;
-            uint cid = cell->cid;
-            uint init = offset[cid];
-            uint p = atomicAdd(&(pos[cid]), 1);
-            neighborhood[init+p] = ag;
-        }
+        Cell *cell = ag->cell;
+        uint x = m > 0 ? truncf(cell->getX()/m) : cell->getX();
+        uint y = n > 0 ? truncf(cell->getY()/n) : cell->getY();
+        uint ncid = y*neighborhoodXDim + x;
+        uint init = tex2D(beginsRef, x, y);
+        uint p = atomicAdd(&(pos[ncid]), 1);
+        neighborhood[init+p] = i;
     }
 }
 
-template<class C>
-__global__ void clearInfoKernel(C **inhabited, uint *registred, uint *pos, uint size) {
+__global__ void indexing(uint *cellids, uint size, uint *begins, uint *ends, uint neighXDim) {
     uint i = threadIdx.x + blockDim.x*blockIdx.x;
     if(i < size) {
-        uint cid = inhabited[i]->cid;
-        registred[cid] = 0;
-        pos[cid] = 0;
+        if(i == 0 || cellids[i] != cellids[i-1]) 
+            begins[cellids[i]] = i;
+        if(i == size-1 || cellids[i] != cellids[i+1])
+            ends[cellids[i]] = i+1;
     }
 }
 
 template<class A, class C>
 void syncSpace(Society<A> *soc, CellularSpace<C> *cs, Neighborhood<A,C> *nb) {
+    nb->clear();
     uint blocks;
     blocks = BLOCKS(soc->size);
     
-    cudaMemset(nb->getSizeDevice(), 0, sizeof(uint));
     findInhabitedKernel<<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size, 
-                                                nb->getInhabitedDevice(), nb->getRegistredDevice(), nb->getSizeDevice());
-    uint nbSize;
-    cudaMemcpy(&nbSize, nb->getSizeDevice(), sizeof(uint), cudaMemcpyDeviceToHost);
-    
+                                             nb->getInhabitedDevice(), nb->n, nb->m, nb->neighborhoodXDim);
     CHECK_ERROR
-    if(nbSize > 0) {
-    	
-		scan(nb->getInhabitedDevice(), nb->getOffsetDevice(), cs->getQuantitiesDevice(), nbSize);
-		CHECK_ERROR
+    
+    thrust::sort(thrust::device, nb->getInhabitedDevice(), nb->getInhabitedDevice()+soc->size);
+    
+    blocks = BLOCKS(soc->size);
+    indexing<<<blocks, THREADS>>>(nb->getInhabitedDevice(), soc->size, nb->getOffsetDevice(), 
+                                  nb->getQuantitiesDevice(), nb->neighborhoodXDim);
+    CHECK_ERROR
 
-		blocks = BLOCKS(soc->size);
-		sortAgentsKernel<<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size, 
-		                                      nb->getNeighborhoodDevice(), nb->getOffsetDevice(), nb->getPosDevice());
-		CHECK_ERROR
-		
-		blocks = BLOCKS(nbSize);
-		clearInfoKernel<<<blocks, THREADS>>>(nb->getInhabitedDevice(), nb->getRegistredDevice(), nb->getPosDevice(), nbSize);
-		CHECK_ERROR
-    }
+    nb->syncTexture();
+    
+	blocks = BLOCKS(soc->size);
+	sortAgentsKernel<<<blocks, THREADS>>>(soc->getAgentsDevice(), soc->size, 
+	                                      nb->getNeighborhoodDevice(), nb->getPosDevice(), 
+	                                      nb->n, nb->m, nb->neighborhoodXDim);
+	CHECK_ERROR
 }
 
 #endif
+
 
