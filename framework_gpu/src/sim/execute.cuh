@@ -1,11 +1,11 @@
 #ifndef EXECUTE_CUH
 #define EXECUTE_CUH
 
-typedef void(*SocialChange)(Agent*);
-typedef void(*SocialChangePair)(Agent*, Agent*);
-typedef void(*SpaceSocialChange)(Agent*, Cell*, uint, uint);
-typedef void(*SpaceSocialChangePair)(Agent*, Agent*, Cell*, uint, uint);
-typedef void(*SpatialChange)(Cell*);
-typedef void(*SpatialChange)(Cell*);
+typedef void(*AgentExecute)(Agent*);
+typedef void(*AgentNeighborhoodExecute)(Agent*, Agent*, const NeighborhoodIterator&, const NeighborhoodIterator&);
+typedef void(*AgentSpatiallyExecute)(Agent*, Cell*, uint, uint);
+typedef void(*AgentSpatiallyNeighborhoodExecute)(Agent*, Agent*, Cell*, uint, uint, const NeighborhoodIterator&, const NeighborhoodIterator&);
+typedef void(*CellChange)(Cell*);
+typedef void(*CellSpatiallyChange)(Cell*, Cell*, uint, uint);
 
 #endif

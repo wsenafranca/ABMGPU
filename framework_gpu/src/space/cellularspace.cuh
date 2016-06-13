@@ -18,33 +18,40 @@ __global__ void initializeCellularSpaceKernel(C *cells, const uint xdim, const u
 }
 
 template<class C>
-class CellularSpace{
+class CellularSpace : public Collection{
 public:
-    CellularSpace(uint xDim, uint yDim) : xdim(xDim), ydim(yDim) {
-    
-        uint totalMem = 0;
-        totalMem += sizeof(C)*xdim*ydim;    // alloc cells        
-        cellsIndex = 0;
-        
-        index = Environment::getEnvironment()->alloc(totalMem);
+    CellularSpace(uint xDim, uint yDim, bool past = true) : Collection(xDim*yDim, xDim*yDim), xdim(xDim), ydim(yDim) {
+        cellsIndex = alloc(sizeof(C)*xdim*ydim);
+        pastIndex = past ? alloc(sizeof(C)*xdim*ydim) : cellsIndex;
     }
     
-    ~CellularSpace() {
-    }
+    ~CellularSpace() {}
     
-    void init() {        
-        uint blocks = BLOCKS(xdim*ydim);
-        initializeCellularSpaceKernel<<<blocks, THREADS>>>(getCellsDevice(), xdim, ydim, xdim*ydim);
-        CHECK_ERROR
+    Event* initializeEvent() {
+        class Init : public Action{
+        public:
+            Init(CellularSpace<C> *cellularspace) : cs(cellularspace) {}
+            void action(cudaStream_t &stream) {
+                uint blocks = BLOCKS(cs->size);
+                initializeCellularSpaceKernel<<<blocks, THREADS, 0, stream>>>(cs->getCellsDevice(), cs->xdim, cs->ydim, cs->size);
+                CHECK_ERROR
+            }
+            CellularSpace<C> *cs;
+        };
+        return new Event(0, COLLECTION_PRIORITY, 0, new Init(this));
     }
     
     C* getCellsDevice() {
-        return (C*)(Environment::getEnvironment()->getGlobalMemory() + index + cellsIndex);
+        return (C*)(getMemPtrDevice() + getIndexOnMemoryDevice() + cellsIndex);
+    }
+    
+    C* getPastDevice() {
+        return (C*)(getMemPtrDevice() + getIndexOnMemoryDevice() + pastIndex);
     }
     
     const uint xdim, ydim;
     uint cellsIndex;
-    uint index;
+    uint pastIndex;
 };
 
 #endif

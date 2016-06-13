@@ -1,5 +1,5 @@
 #include <simgpu.cuh>
-
+#include <assert.h>
 //#define OBSERVER
 
 #ifdef OBSERVER
@@ -31,7 +31,7 @@ const double jump = 0.7;
 
 // utils
 
-__device__ double _stx(double x, double width) { 
+GPU double _stx(double x, double width) { 
     if (x >= 0) { 
         if (x < width) return x;
         return x - width;
@@ -39,7 +39,7 @@ __device__ double _stx(double x, double width) {
     return x + width;
 }
   
-__device__  double tdx(double x1, double x2,double width) {
+GPU  double tdx(double x1, double x2,double width) {
 
     if (fabs(x1-x2) <= width / 2)
         return x1 - x2;  
@@ -50,7 +50,7 @@ __device__  double tdx(double x1, double x2,double width) {
     return dx;
 }   
 
-__device__  double _sty( double y, double height) { 
+GPU  double _sty( double y, double height) { 
     if (y >= 0) { 
         if (y < height) return y; 
         return y - height; 
@@ -58,7 +58,7 @@ __device__  double _sty( double y, double height) {
     return y + height;
 }
 
-__device__  double tdy(double y1, double y2, double height) {
+GPU  double tdy(double y1, double y2, double height) {
 
     if (fabs(y1-y2) <= height / 2)
         return y1 - y2;  // no wraparounds  -- quick and dirty check
@@ -79,85 +79,12 @@ public:
     double x, y;
 };
 
-__device__ void init(Agent *ag) {
+GPU void init(Agent *ag) {
     Boid *boid = (Boid*)ag;
     boid->x = boid->cell->getX();
     boid->y = boid->cell->getY();
 }
 
-namespace Iterator {
-
-class CellIterator{
-public:
-    __device__ CellIterator() {}
-    
-    __device__ CellIterator(const CellIterator &it) : p(it.p) {}
-    
-    __device__ CellIterator(uint *ptr) : p(ptr) {}
-    
-    __device__ CellIterator& operator++() {p++;return *this;}
-    
-    __device__ CellIterator operator++(int) {CellIterator tmp(*this); operator++(); return tmp;}
-    
-    __device__ const CellIterator& operator=(const CellIterator &it) {p = it.p; return *this;}
-    
-    __device__ bool operator==(const CellIterator& rhs) {return p==rhs.p;}
-    
-    __device__ bool operator!=(const CellIterator& rhs) {return p!=rhs.p;}
-    
-    __device__ uint& operator*() {return *p;}
-    
-private:
-    uint *p;
-};
-}
-
-namespace Collection{
-
-class Neighborhood{
-public:
-    __device__ Neighborhood(Agent *ag, uint *neighborhood, uint n, uint m, uint nxdim, uint nydim) {
-        uint2 pos = ag->cell->getPos();
-        int x = truncf(pos.x/m);
-        int y = truncf(pos.y/n);
-        neighs = 0;
-        for(int ny = y-1; ny <= y+1; ny++) {
-            for(int nx = x-1; nx <= x+1; nx++) {
-                if(nx >= 0 && nx < nxdim && ny >= 0 && ny < nydim) {
-                    uint begin = tex2D(beginsRef, nx, ny);
-                    uint end = tex2D(endsRef, nx, ny);
-                    if(end > 0) {
-                        begins[neighs] = Iterator::CellIterator(&neighborhood[begin]);
-                        ends[neighs] = Iterator::CellIterator(&neighborhood[end]);
-                        neighs++;
-                    }
-                }
-            }
-        }
-    }
-    __device__ ~Neighborhood() {
-    }
-    __device__ const Iterator::CellIterator& begin(uint idx) {
-        return begins[idx];
-    }
-    __device__ const Iterator::CellIterator& end(uint idx) {
-        return ends[idx];
-    }
-    Iterator::CellIterator begins[9];
-    Iterator::CellIterator ends[9];
-    uint neighs;
-};
-
-}
-
-#define forEachNeighborhood(ag, nb) \
-    Collection::Neighborhood nb(ag, neighborhood, n, m, nxdim, nydim);\
-    Iterator::CellIterator it; \
-    uint neighId; \
-    for(uint i = 0; i < nb.neighs; i++)  \
-        for(it = nb.begin(i), neighId = ((&past[*(it)] == ag) ? *(++it) : (*it)); it != nb.end(i); \
-                              neighId = ((&past[*(++it)] == ag) ? *(++it) : (*it))) \
-    
 template<class A, class C>
 __global__ void flockers(A *agents, A *past, uint size, C* cells, uint *neighborhood, uint n, uint m, uint nxdim, uint nydim) {
     uint idx = threadIdx.x + blockDim.x*blockIdx.x;
@@ -187,14 +114,33 @@ __global__ void flockers(A *agents, A *past, uint size, C* cells, uint *neighbor
         double temp_tdx = XDIM;
         double temp_tdy = YDIM;
         double len = 0.0;
-
-        Collection::Neighborhood nb(ag, neighborhood, n, m, nxdim, nydim);
-        Iterator::CellIterator it;
         
-        for(uint i = 0; i < nb.neighs; i++) {
-            for(it = nb.begin(i); it != nb.end(i); ++it) {
-                A *ag2 = &past[*it];
-                if(ag == ag2) continue;
+        uint2 pos = ag->cell->getPos();
+        int x = truncf(pos.x/m);
+        int y = truncf(pos.y/n);
+        uint* begins[9];
+        uint* ends[9];
+        uint neighs=0;
+        for(int ny = y-1; ny <= y+1; ny++) {
+            for(int nx = x-1; nx <= x+1; nx++) {
+                if(nx >= 0 && nx < nxdim && ny >= 0 && ny < nydim) {
+                    uint begin = tex2D(beginsRef, nx, ny);
+                    uint end = tex2D(endsRef, nx, ny);
+                    if(end > 0) {
+                        begins[neighs] = &neighborhood[begin];
+                        ends[neighs] = &neighborhood[end];
+                        neighs++;
+                    }
+                }
+            }
+        }
+        
+        uint *p;
+        for(uint i = 0; i < neighs; i++) {
+            for(p = begins[i]; p != ends[i]; p++) {
+                if(ag == &agents[*p]) continue;
+                
+                A *ag2 = &past[*p];
                 
                 him_x = ag2->x;
                 him_y = ag2->y;
@@ -311,58 +257,92 @@ void draw(uint i, Society<A> *soc, uint *map) {
 
 #endif
 
-void run() {
-    Random::randomObj = new Random(1234, POP_SIZE);
-    
-    Society<Boid> soc(POP_SIZE, POP_SIZE);
-    CellularSpace<Cell> cs(XDIM, YDIM);    
-    Neighborhood<Boid, Cell> nb(&soc, &cs, NEIGHBOR, NEIGHBOR);
-    
-    Environment::getEnvironment()->init();
-    
-    soc.init();
-    cs.init();
-    nb.init();
-    
-    placement(&soc, &cs);
-    execute<init>(&soc);
-    
-#ifdef OBSERVER
-    uint *map = (uint*)malloc(sizeof(uint)*XDIM*YDIM);
-#endif
-    
-    for(int i = 1; i <= ITERATION; i++) {
-        synchronize(&soc, &cs, &nb);
-        flockers<<<BLOCKS(soc.size), THREADS>>>(soc.getAgentsDevice(), soc.getPastDevice(), soc.size, cs.getCellsDevice(), 
-                 nb.getNeighborhoodDevice(), nb.n, nb.m, nb.neighborhoodXDim, nb.neighborhoodYDim);
-#ifdef OBSERVER
-        if(i % 10 == 0)
-            draw(i/10, &soc, map);
-#endif
+class FPSAction : public Action{
+public:
+    FPSAction() {
+        fps = 0;
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        
+        cudaEventRecord(start);
     }
+    ~FPSAction() {
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+    }
+    void action(cudaStream_t &) {
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        float elapsed;
+        cudaEventElapsedTime(&elapsed, start, stop);
+        if(elapsed > 1000) {
+            cudaEventRecord(start);
+            printf("time: %d FPS: %lf\n", getEvent()->getTime(), fps/elapsed*1000);
+            fps=0;
+        }
+        fps++;
+    }
+    cudaEvent_t start, stop;
+
+    long t;
+    int fps;
+};
+
+template<class A, class C>
+class Flockers : public Action{
+public:
+    Flockers(Society<A> *society, CellularSpace<C> *cellSpace, Neighborhood<A, C> *neighborhood) 
+                : soc(society), cs(cellSpace), nb(neighborhood){}
+    void action(cudaStream_t &stream) {
+        uint blocks = BLOCKS(soc->size);
+        flockers<A, C><<<blocks, THREADS, 0, stream>>>(soc->getAgentsDevice(), soc->getPastDevice(), soc->size, 
+                                                       cs->getCellsDevice(),
+                                                       nb->getNeighborhoodDevice(), nb->n, nb->m, 
+                                                       nb->neighborhoodXDim, nb->neighborhoodYDim);
+    }
+    Society<A> *soc;
+    CellularSpace<C> *cs;
+    Neighborhood<A, C> *nb;
+};
+
+void run(int workers, long seed) {
+    cudaDeviceReset();
     
-#ifdef OBSERVER
-    free(map);
-#endif
+    Environment *env = new Environment(workers);
+    env->setRandomObject(new Random(seed, POP_SIZE));
+    Society<Boid> *soc = env->createSociety<Boid>(POP_SIZE);
+    CellularSpace<Cell> *cs = env->createCellularSpace<Cell>(XDIM, YDIM);
     
-    cudaDeviceSynchronize();
-    Environment::getEnvironment()->reset(); // temp
+    Neighborhood<Boid, Cell> *nb = env->createNeighborhood(soc, cs, NEIGHBOR, NEIGHBOR);
+    env->createPlacement(soc, cs);
+    
+    env->getTimer()->addEvent(ExecuteEvent::execute<init>(soc, 0, 0, 0));
+    env->getTimer()->createEvent(1, 0, 1, new Flockers<Boid, Cell>(soc, cs, nb));
+    
+    //env->getTimer()->createEvent(0, -999, 1, new FPSAction());
+    
+    env->execute(ITERATION);
+    
+    delete env;
 }
 
 int main() {
-    cudaSetDevice(1);
+    CURRENT_DEVICE = 1;
     
     uint pops[] = {320000, 640000, 1280000, 1600000, 2560000};
-    for(int i = 0; i < 5; i++) {
-        POP_SIZE = pops[i];
+    uint workers[] = {1, 2, 4, 8};
+    for(int j = 0; j < 4; j++) {
+        printf("%d\n", workers[j]);
+        for(int i = 0; i < 5; i++) {
+            POP_SIZE = pops[i];
         
-        long t = clock();
-        run();
-        t = clock()-t;
-        printf("%lf\n", t/(double) CLOCKS_PER_SEC);
+            long t = time(0);
+            run(workers[j], 1234);
+            t = time(0)-t;
+            //printf("%lf\n", t/(double) CLOCKS_PER_SEC);
+            printf("%ldsecs\n", t);
+        }
     }
-    
-    delete Environment::getEnvironment(); // temp
     
 	return 0;
 }

@@ -3,10 +3,22 @@
 
 #include <cstdio>
 
+#define GPU __device__ __forceinline__
+
+static int CURRENT_DEVICE = 0;
+void setCurrentDevice() {
+    cudaSetDevice(CURRENT_DEVICE);
+}
 uint THREADS = 256;
 #define BLOCKS(x) max(1, (uint)ceil(x/(float)THREADS))
 
 #define ID threadIdx.x + blockDim.x*blockIdx.x
+
+// needed to orders the pre-execution (time=0) on scheduler
+#define COLLECTION_PRIORITY -4
+#define PLACEMENT_PRIORITY -3
+#define SYNCHRONIZE_PRIORITY -2
+#define INDEXING_PRIORITY -1
 
 #define CHECK_ERROR \
 {\

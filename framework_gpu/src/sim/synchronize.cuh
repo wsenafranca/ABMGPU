@@ -1,11 +1,7 @@
 #ifndef SYNCHRONIZE_CUH
 #define SYNCHRONIZE_CUH
 
-template<class A, class C>
-void synchronize(Society<A> *soc, CellularSpace<C> *cs, Neighborhood<A,C> *nb) {
-    Random::randomObj->generate();
-    syncAgents(soc, cs);
-    syncSpace(soc, cs, nb);
-}
+#include "synchronize_agent.cuh"
+#include "synchronize_space.cuh"
 
 #endif

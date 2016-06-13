@@ -5,7 +5,7 @@
 #include "agent.cuh"
 
 template<class A>
-__global__ void initializeSocietyKernel(A *agents, A *past, const uint size) {
+__global__ void initializeSocietyKernel(A *agents, const uint size) {
     uint i = threadIdx.x + blockDim.x*blockIdx.x;
     if(i < size) {
         A ag;
@@ -15,9 +15,9 @@ __global__ void initializeSocietyKernel(A *agents, A *past, const uint size) {
 }
 
 template<class A>
-class Society{
+class Society : public Collection{
 public:
-    Society(uint Size, uint Capacity) : size(Size), capacity(Capacity) {
+    Society(uint size, uint capacity) : Collection(size, capacity) {
         uint totalMem = 0;
         agentsIndex = totalMem;
         totalMem += sizeof(A)*capacity;     // alloc agents
@@ -25,57 +25,49 @@ public:
         pastIndex = totalMem;
         totalMem += sizeof(A)*capacity;     // alloc past
         
-        //indicesIndex = totalMem;
-        //totalMem += sizeof(uint)*capacity;
-        
         numDeathsIndex = totalMem;
         totalMem += sizeof(uint);          // alloc numDeaths
         
         numRebirthsIndex = totalMem;
         totalMem += sizeof(uint);          // alloc numRebirths
         
-        index = Environment::getEnvironment()->alloc(totalMem);
+        alloc(totalMem);
     }
     
     ~Society() {
     }
     
-    void init() {
-        uint blocks = BLOCKS(size);
-        initializeSocietyKernel<<<blocks, THREADS>>>(getAgentsDevice(), getPastDevice(), size);
-        cudaMemcpy(getPastDevice(), getAgentsDevice(), sizeof(A)*size, cudaMemcpyDeviceToDevice);
-        CHECK_ERROR
-    }
-    
-    void synchronize() {
-        cudaMemcpy(getPastDevice(), getAgentsDevice(), sizeof(A)*size, cudaMemcpyDeviceToDevice);
+    Event* initializeEvent() {
+        class Init : public Action{
+        public:
+            Init(Society<A> *society) : soc(society) {}
+            void action(cudaStream_t &stream) {
+                uint blocks = BLOCKS(soc->size);
+                initializeSocietyKernel<<<blocks, THREADS, 0, stream>>>(soc->getAgentsDevice(), soc->size);
+                CHECK_ERROR
+            }
+            Society<A> *soc;
+        };
+        return new Event(0, COLLECTION_PRIORITY, 0, new Init(this));
     }
     
     A* getAgentsDevice() {
-        return (A*)(Environment::getEnvironment()->getGlobalMemory()+index+agentsIndex);
+        return (A*)(getMemPtrDevice()+getIndexOnMemoryDevice()+agentsIndex);
     }
     
     A* getPastDevice() {
-        return (A*)(Environment::getEnvironment()->getGlobalMemory()+index+pastIndex);
+        return (A*)(getMemPtrDevice()+getIndexOnMemoryDevice()+pastIndex);
     }
-    
-    //uint* getIndicesDevice() {
-    //    return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+indicesIndex);
-    //}
      
     uint* getNumDeathsDevice() {
-        return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+numDeathsIndex);
+        return (uint*)(getMemPtrDevice()+getIndexOnMemoryDevice()+numDeathsIndex);
     }
     
     uint* getNumRebirthsDevice() {
-        return (uint*)(Environment::getEnvironment()->getGlobalMemory()+index+numRebirthsIndex);
+        return (uint*)(getMemPtrDevice()+getIndexOnMemoryDevice()+numRebirthsIndex);
     }
     
-    uint size;
-    const uint capacity;
-    
 private:
-    uint index;
     uint agentsIndex;
     uint pastIndex;
     uint indicesIndex;

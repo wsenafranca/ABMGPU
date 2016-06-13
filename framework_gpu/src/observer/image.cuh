@@ -1,7 +1,8 @@
 #ifndef IMAGE_CUH
 #define IMAGE_CUH
 
-int saveBMP(unsigned int *map, unsigned int width, unsigned int height, const char *filename) {
+template<class T>
+int saveBMP(T *map, unsigned int width, unsigned int height, const char *filename) {
     unsigned int filesize = 54 + 3*width*height;
     
     unsigned char *img = (unsigned char*)malloc(sizeof(unsigned char)*width*height*3);
@@ -15,11 +16,11 @@ int saveBMP(unsigned int *map, unsigned int width, unsigned int height, const ch
     for(unsigned int i = 0; i < height*width; i++) {
         if(map[i] > 0) {
             //printf("%d\n", cells[i].quantity);
-            int b = 2;//cells[i].quantity*BOID_SIZE;
+            int b = 1;//cells[i].quantity*BOID_SIZE;
             for(int j = -b/2; j <= b/2; j++) {
                 for(int k = -b/2; k <= b/2; k++) {
-                    int x = i/width;
-                    int y = i%width;
+                    int x = i%width;
+                    int y = i/width;
                     int idx = (y+j)*width+(x+k);
                     if(idx >= 0 && idx < width*height) {
                         img[idx*3+2] = 0;
