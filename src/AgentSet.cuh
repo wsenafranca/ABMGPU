@@ -2,6 +2,7 @@
 #define AGENT_SET_CUH
 
 #include "Collection.cuh"
+#include "AgentSetKernels.cuh"
 
 /**
  \class AgentSet
@@ -15,7 +16,7 @@ public:
 	 * \param numAgents The quantity of agents.
 	 * \param stream The <a href="http://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html#group__CUDART__TYPES_1ge15d9c8b7a240312b533d6122558085a">cudaStream</a> that will handle the allocation. Default is the stream 0.
  	 **/
-	virtual void alloc(const unsigned int numAgents, cudaStream_t stream);
+	virtual void alloc(const unsigned int numAgents, cudaStream_t stream = 0);
 	 /**
 	 * Resize the set. If the new size is bigger than the current capacity, 
 	 * this method will allocate a new block of memory and copy all data from 
@@ -24,7 +25,7 @@ public:
 	 * \param newSize The new size of the collection.
 	 * \param stream The <a href="http://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html#group__CUDART__TYPES_1ge15d9c8b7a240312b533d6122558085a">cudaStream</a> that will handle the resize. Default is the stream 0.
 	 **/
-	virtual void resize(const unsigned int oldSize, const unsigned int newSize, cudaStream_t stream);
+	virtual void resize(const unsigned int oldSize, const unsigned int newSize, cudaStream_t stream = 0);
 	virtual void free();
 	/**
 	* Copy the data of a single agent from a given AgentSet. This function must be called only in a GPU kernel.
@@ -37,7 +38,11 @@ public:
 	this->pregnant[index1] = in->pregnants[index2];
 	* @endcode
 	**/
-	virtual __device__ void copy(const unsigned int index1, const AgentSet *in, const unsigned int index2);
+	virtual __device__ void copy(const unsigned int index1, const AgentSet *in, const unsigned int index2) {
+		indices[index1] = index1;
+		alives[index1] = in->alives[index2];
+		pregnants[index1] = in->pregnants[index2];
+	}
 	/**
 	* Rebirth a given agent in this set. This function must be called only in a GPU kernel.
 	* Due to performance issues, the agents are not inserted or removed from the set, instead of this, they are setted as dead or alive.
@@ -51,7 +56,11 @@ public:
 	this->types[index]    = this->types[parent];
 	@endcode
 	**/
-	virtual __device__ void rebirth(const unsigned int index, const unsigned int parent);
+	virtual __device__ void rebirth(const unsigned int index, const unsigned int parent) {
+		indices[index] = index;
+		alives[index] = true;
+		pregnants[index] = false;
+	}
 	/**
 	* Set the state of a given agent as dead. This function must be called only in a GPU kernel.
 	* \param index The index of the agent.
@@ -78,7 +87,6 @@ public:
 	**/
 	__device__ const bool& isPregnant(const unsigned int index) const;
 
-private:
 	unsigned int *indices;
 	bool *alives;
 	bool *pregnants;

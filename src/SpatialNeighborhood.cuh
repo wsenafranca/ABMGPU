@@ -83,7 +83,6 @@ public:
 		cudaFree(keys);
 	}
 
-private:
 	unsigned int *begins;
 	unsigned int *ends;
 	

@@ -4,7 +4,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/fill.h>
 
-void AgentSet::alloc(const unsigned int numAgents, cudaStream_t stream = 0) {
+void AgentSet::alloc(const unsigned int numAgents, cudaStream_t stream) {
 	cudaMalloc(&indices, sizeof(unsigned int)*numAgents);
 	cudaMalloc(&alives, sizeof(bool)*numAgents);
 	cudaMalloc(&pregnants, sizeof(bool)*numAgents);
@@ -14,7 +14,7 @@ void AgentSet::alloc(const unsigned int numAgents, cudaStream_t stream = 0) {
 	thrust::fill(thrust::cuda::par.on(stream), pregnants, pregnants+numAgents, false);
 }
 
-void AgentSet::resize(const unsigned int oldSize, const unsigned int newSize, cudaStream_t stream=0) {
+void AgentSet::resize(const unsigned int oldSize, const unsigned int newSize, cudaStream_t stream) {
 	
 	unsigned int *h_indices;
 	bool *h_alives;
@@ -50,18 +50,6 @@ void AgentSet::free() {
 	cudaFree(indices);
 	cudaFree(alives);
 	cudaFree(pregnants);
-}
-
-__device__ void AgentSet::copy(const unsigned int index1, const AgentSet *in, const unsigned int index2) {
-	indices[index1] = index1;
-	alives[index1] = in->alives[index2];
-	pregnants[index1] = in->pregnants[index2];
-}
-
-__device__ void AgentSet::rebirth(const unsigned int index, const unsigned int parent) {
-	indices[index] = index;
-	alives[index] = true;
-	pregnants[index] = false;
 }
 
 __device__ void AgentSet::die(const unsigned int index) {
