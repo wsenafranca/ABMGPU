@@ -1,11 +1,8 @@
 cmake_minimum_required(VERSION 3.9)
 project(ABMGPU)
 
-enable_language(CUDA)
-find_package(CUDA)
-string(APPEND CMAKE_CUDA_FLAGS " -arch=compute_30 -code=sm_30")
-
-set(CUDA_SDK_ROOT_DIR ${CUDA_TOOLKIT_ROOT_DIR})
+find_package(CUDA QUIET REQUIRED)
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} "-arch=compute_30 -code=sm_30 -std=c++11")
 
 set(SRC
 	src/AgentSet.cu
@@ -31,14 +28,12 @@ set(INCLUDES
 
 option(STATIC "Generate a static lib" OFF)
 if(STATIC)
-	ADD_LIBRARY(ABMGPU STATIC ${SRC})
+	cuda_ADD_LIBRARY(ABMGPU STATIC ${SRC})
 else()
-	ADD_LIBRARY(ABMGPU SHARED ${SRC})
+	cuda_ADD_LIBRARY(ABMGPU SHARED ${SRC})
 	file(COPY ${INCLUDES}
 		 DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/include)
 endif()
-
-set_property(TARGET ABMGPU PROPERTY CUDA_STANDARD 11)
 
 find_cuda_helper_libs(curand)
 target_link_libraries(ABMGPU ${CUDA_curand_LIBRARY})
